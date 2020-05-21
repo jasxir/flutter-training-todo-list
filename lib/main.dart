@@ -1,4 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:todolist/components/Item.dart';
 
 void main() {
   runApp(MyApp());
@@ -26,42 +32,95 @@ class MyApp extends StatelessWidget {
         // closer together (more dense) than on mobile platforms.
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      home: MyHomePage(title: 'Flutter Demo Home Page'),
+      home: ToDoList(title: 'To Do List App'),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  MyHomePage({Key key, this.title}) : super(key: key);
+class Storage {
+  Future<String> get _localPath async {
+    final directory = await getApplicationDocumentsDirectory();
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
+    return directory.path;
+  }
 
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
+  Future<File> get _localFile async {
+    final path = await _localPath;
+    return File('$path/Item.txt');
+  }
+
+  Future<int> readCounter() async {
+    try {
+      final file = await _localFile;
+
+      // Read the file
+      String contents = await file.readAsString();
+
+      return int.parse(contents);
+    } catch (e) {
+      // If encountering an error, return 0
+      return 0;
+    }
+  }
+
+  Future<File> writeCounter(String jsonString) async {
+    final file = await _localFile;
+
+    // Write the file
+    return file.writeAsString(jsonString);
+  }
+}
+
+class ToDoList extends StatefulWidget {
+  ToDoList({Key key, this.title}) : super(key: key);
 
   final String title;
 
   @override
-  _MyHomePageState createState() => _MyHomePageState();
+  _ToDoListState createState() => _ToDoListState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _ToDoListState extends State<ToDoList> {
+  Item item =  new Item();
+  List<Item> itemList = List<Item>();
+  TextEditingController itemController = new TextEditingController();
+  final Storage storage = new Storage();
 
-  void _incrementCounter() {
+  @override
+  void initState(){
+    super.initState();
+//    _loadCounter();
+
+  }
+
+  _loadCounter() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String itemStr = prefs.getString('itemList');
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      var tagObjsJson = jsonDecode(itemStr) as List;
+      itemList = tagObjsJson.map((tagJson) => Item.fromJson(tagJson)).toList();
+
     });
   }
+
+  Future<File> _addTask(String task) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String itemStr = prefs.getString('itemList');
+
+    setState(() {
+      var tagObjsJson = jsonDecode(itemStr) as List;
+      itemList = tagObjsJson.map((tagJson) => Item.fromJson(tagJson)).toList();
+
+      item =  new Item();
+      item.text = task;
+      item.selected = false;
+    });
+    itemList.add(item);
+    String jsonItem =  jsonEncode(itemList);
+    return storage.writeCounter(jsonItem);
+//    prefs.setString('itemList', jsonItem);
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -95,23 +154,40 @@ class _MyHomePageState extends State<MyHomePage> {
           // center the children vertically; the main axis here is the vertical
           // axis because Columns are vertical (the cross axis would be
           // horizontal).
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
-            Text(
-              'You have pushed the button this many times:',
+            TextField(
+              controller: itemController,
+              decoration: InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: 'Enter item list'
+              ),
             ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headline4,
+            FlatButton(
+              color: Colors.blueAccent,
+              textColor: Colors.white,
+              child: Text('Add'),
+              onPressed: () {
+                _addTask(itemController.text);
+              },
+            ),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.all(8.0),
+                children: itemList.map((e) => CheckboxListTile(
+                    title: Text(e.text),
+                    value: e.selected,
+                    onChanged: (val){
+                      setState(() {
+                        e.selected = val;
+                      });
+                    })).toList(),
+              ),
             ),
           ],
         ),
+
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
